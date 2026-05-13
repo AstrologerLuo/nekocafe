@@ -165,3 +165,6 @@ git push → Lint & Format → Unit Test（覆盖率≥80%）→ Trivy 安全扫
 ---
 
 ## 参考文档
+
+- [运维手册](./docs/runbook.md)
+- [回滚手册](./docs/rollback.md)
