@@ -165,8 +165,3 @@ git push → Lint & Format → Unit Test（覆盖率≥80%）→ Trivy 安全扫
 ---
 
 ## 参考文档
-
-- [D3-1 DevOps 设计方案](../D3-1_DevOps设计方案.docx)
-- [运维手册](./docs/runbook.md)
-- [回滚手册](./docs/rollback.md)
-- [实验二架构文档](../../实验二_软件架构设计与微服务拆分/)
