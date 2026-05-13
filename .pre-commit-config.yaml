@@ -1,0 +1,55 @@
+repos:
+  # ===== 通用检查 =====
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace          # 清除行尾空格
+      - id: end-of-file-fixer            # 确保文件末尾有换行
+      - id: check-yaml                   # YAML 语法检查
+      - id: check-json                   # JSON 语法检查
+      - id: check-merge-conflict         # 检测未解决的合并冲突
+      - id: check-added-large-files      # 禁止提交大文件（>500KB）
+        args: ['--maxkb=500']
+      - id: no-commit-to-branch          # 禁止直接 commit 到 main
+        args: ['--branch', 'main']
+
+  # ===== Secret 检测 =====
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets               # 检测硬编码 Secret
+        args: ['--baseline', '.secrets.baseline']
+
+  # ===== Python：ruff（lint + format）=====
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff                         # Lint
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^services/reservation/
+      - id: ruff-format                  # Format
+        files: ^services/reservation/
+
+  # ===== Python：Bandit 安全扫描 =====
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: ['-ll', '-r']
+        files: ^services/reservation/src/
+
+  # ===== Dockerfile：hadolint =====
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        name: hadolint (Dockerfile lint)
+        files: Dockerfile
+
+  # ===== YAML lint =====
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yml]
+        files: \.(yaml|yml)$

@@ -1,0 +1,162 @@
+name: CD
+
+on:
+  push:
+    branches: [main]        # 自动部署到 dev
+    tags:
+      - 'v*.*.*'            # 手动审批后部署到 staging/prod
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_ORG: ${{ github.repository_owner }}
+
+jobs:
+  # ===================================================================
+  # JOB 1: 部署到 dev（main 分支自动触发）
+  # ===================================================================
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig (dev)
+        run: |
+          echo "${{ secrets.KUBECONFIG_DEV }}" | base64 -d > kubeconfig.yaml
+          export KUBECONFIG=kubeconfig.yaml
+
+      - name: Deploy to dev namespace (Helm + 金丝雀)
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+          IMAGE_TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+
+          helm upgrade --install nekocafe-reservation ./helm/reservation \
+            --namespace nekocafe-dev \
+            --create-namespace \
+            --set image.tag=$IMAGE_TAG \
+            --set canary.enabled=true \
+            --set canary.steps[0].setWeight=5 \
+            --set canary.steps[1].pause.duration=2m \
+            --set canary.steps[2].setWeight=25 \
+            --set canary.steps[3].pause.duration=3m \
+            --set canary.steps[4].setWeight=100 \
+            --wait --timeout=10m
+
+          helm upgrade --install nekocafe-member ./helm/member \
+            --namespace nekocafe-dev \
+            --set image.tag=$IMAGE_TAG \
+            --set canary.enabled=true \
+            --wait --timeout=10m
+
+      - name: 运行烟雾测试
+        run: |
+          sleep 30
+          DEV_URL=${{ secrets.DEV_SERVICE_URL }}
+          curl -sf $DEV_URL/healthz || exit 1
+          echo "Dev 烟雾测试通过 ✅"
+
+  # ===================================================================
+  # JOB 2: 部署到 staging（tag *-staging 触发，需要手动审批）
+  # ===================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-staging')
+    environment:
+      name: staging
+      url: https://staging.nekocafe.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig (staging)
+        run: |
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig.yaml
+
+      - name: Deploy to staging namespace
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+          TAG=${{ github.ref_name }}
+
+          helm upgrade --install nekocafe-reservation ./helm/reservation \
+            --namespace nekocafe-staging \
+            --create-namespace \
+            --set image.tag=$TAG \
+            --set canary.enabled=true \
+            --set autoscaling.enabled=true \
+            --wait --timeout=15m
+
+          helm upgrade --install nekocafe-member ./helm/member \
+            --namespace nekocafe-staging \
+            --set image.tag=$TAG \
+            --wait --timeout=15m
+
+      - name: 运行集成测试
+        run: |
+          sleep 60
+          STAGING_URL=${{ secrets.STAGING_SERVICE_URL }}
+          curl -sf $STAGING_URL/healthz || exit 1
+          echo "Staging 集成测试通过 ✅"
+
+  # ===================================================================
+  # JOB 3: 部署到 prod（正式 tag 触发，需要手动审批，蓝绿部署）
+  # ===================================================================
+  deploy-prod:
+    name: Deploy to Prod
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')
+    environment:
+      name: production
+      url: https://nekocafe.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig (prod)
+        run: |
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > kubeconfig.yaml
+
+      - name: 蓝绿部署到 prod
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+          TAG=${{ github.ref_name }}
+
+          # 部署 Green 版本
+          helm upgrade --install nekocafe-reservation-green ./helm/reservation \
+            --namespace nekocafe-prod \
+            --create-namespace \
+            --set image.tag=$TAG \
+            --set deployment.slot=green \
+            --set service.selector.slot=green \
+            --wait --timeout=15m
+
+          # 烟雾测试 Green
+          sleep 30
+          kubectl port-forward svc/nekocafe-reservation-green 18081:8080 -n nekocafe-prod &
+          sleep 5
+          curl -sf http://localhost:18081/healthz || (echo "Green 烟雾测试失败，保持 Blue" && exit 1)
+
+          # 切换 Service 指向 Green
+          kubectl patch svc nekocafe-reservation -n nekocafe-prod \
+            -p '{"spec":{"selector":{"slot":"green"}}}'
+
+          echo "蓝绿切换完成 ✅ - 当前 prod 指向 green ($TAG)"
+
+          # 保留 Blue 5 分钟后降为 0 副本
+          sleep 300
+          kubectl scale deploy nekocafe-reservation-blue -n nekocafe-prod --replicas=0 || true
+
+      - name: 通知发布完成
+        if: always()
+        run: |
+          echo "部署状态: ${{ job.status }}"
+          # TODO: 接入飞书/邮件通知

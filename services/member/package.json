@@ -1,0 +1,42 @@
+{
+  "name": "nekocafe-member",
+  "version": "1.0.0",
+  "description": "NekoCafé 会员服务 - 用户注册/登录、积分体系、等级权益",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest --coverage --coverageDirectory=coverage",
+    "lint": "eslint src/ --ext .js",
+    "lint:fix": "eslint src/ --ext .js --fix"
+  },
+  "dependencies": {
+    "express": "4.19.2",
+    "@opentelemetry/sdk-node": "0.51.1",
+    "@opentelemetry/auto-instrumentations-node": "0.46.1",
+    "@opentelemetry/exporter-trace-otlp-grpc": "0.51.1",
+    "@opentelemetry/resources": "1.24.1",
+    "@opentelemetry/semantic-conventions": "1.24.1",
+    "jsonwebtoken": "9.0.2",
+    "pg": "8.11.5"
+  },
+  "devDependencies": {
+    "jest": "29.7.0",
+    "supertest": "7.0.0",
+    "eslint": "8.57.0",
+    "eslint-plugin-security": "3.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "src/**/*.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 80
+      }
+    }
+  }
+}

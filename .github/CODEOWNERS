@@ -1,0 +1,25 @@
+# CODEOWNERS - 代码负责人配置
+# 格式：<文件路径模式> <GitHub 用户名>
+# 所有匹配路径的 PR 会自动请求对应 owner 的 review
+
+# 全局负责人
+*                              @lxy220902105
+
+# 预约服务
+/services/reservation/         @lxy220902105
+
+# 会员服务
+/services/member/              @lxy220902105
+
+# API 网关配置
+/services/api-gateway/         @lxy220902105
+
+# CI/CD 流水线（高优先级）
+/.github/workflows/            @lxy220902105
+
+# Helm Chart / K8s 配置
+/helm/                         @lxy220902105
+
+# 文档
+/docs/                         @lxy220902105
+/README.md                     @lxy220902105
