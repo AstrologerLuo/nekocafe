@@ -91,7 +91,7 @@ nekocafe/
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-org/nekocafe.git
+git clone https://github.com/AstrologerLuo/nekocafe.git
 cd nekocafe
 
 # 一键启动完整栈（含 PostgreSQL + Redis + 两个服务）
