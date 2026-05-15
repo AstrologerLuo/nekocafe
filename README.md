@@ -48,6 +48,7 @@ nekocafe/
 │   │   │   ├── routers/        # 路由模块
 │   │   │   └── telemetry.py    # OpenTelemetry 集成（HTTP OTLP）
 │   │   ├── tests/
+│   │   │   ├── conftest.py     # pytest 路径配置
 │   │   │   ├── test_smoke.py   # 冒烟测试
 │   │   │   └── test_reservation.py  # 业务单元测试
 │   │   ├── Dockerfile          # 多阶段构建（非 root 运行）
@@ -135,10 +136,32 @@ make down
 ## CI/CD 流水线
 
 ```
-git push → Lint & Format → Unit Test（覆盖率≥80%）→ Trivy 安全扫描
-→ Docker Build（多阶段）→ 推送 GHCR → PR 评论（覆盖率/漏洞/镜像大小）
-→ [CD] 自动/手动部署 → 金丝雀/蓝绿发布 → 监控检测 → 自动回滚（P95>500ms 或错误率>1%）
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              CI 流水线                                   │
+│                                                                         │
+│  Lint ──┬── Unit Test ── Build & Scan ── Integration Test ── Push GHCR │
+│  ruff   │  pytest+Jest   Docker+Trivy      docker compose    GHCR 推送  │
+│  eslint └── SAST                                                       │
+│              bandit+npm audit                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              CD 流水线                                   │
+│                                                                         │
+│  [CD] 自动/手动部署 → 金丝雀/蓝绿发布 → 监控检测                        │
+│                      → 自动回滚（P95>500ms 或错误率>1%）                 │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+| 阶段 | 工具 | 说明 |
+|------|------|------|
+| Lint | ruff / eslint | 代码格式与质量 |
+| SAST | bandit / npm audit | 静态应用安全测试 |
+| Unit Test | pytest / Jest | 单元测试 + 覆盖率 |
+| Build & Scan | Docker Buildx + Trivy | 多阶段构建 + 容器漏洞扫描 |
+| Integration Test | docker compose | 全栈启动 + 冒烟测试 |
+| Push GHCR | build-push-action | 推送镜像至 GitHub Container Registry |
 
 详见 `.github/workflows/ci.yml` 和 `.github/workflows/cd.yml`。
 
