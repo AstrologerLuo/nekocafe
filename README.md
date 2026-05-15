@@ -8,7 +8,7 @@
 
 - 班级 / 学号 / 姓名：计算机23-3班 / 220902105 / 罗星宇
 - 案例项目：NekoCafé 猫咪主题餐饮预约平台（12城 38门店）
-- 文档版本：v1.0 · 2026-05-13
+- 文档版本：v1.1 · 2026-05-15
 
 ---
 
@@ -46,30 +46,32 @@ nekocafe/
 │   │   │   ├── main.py         # FastAPI 应用入口
 │   │   │   ├── models.py       # 数据模型
 │   │   │   ├── routers/        # 路由模块
-│   │   │   └── telemetry.py    # OpenTelemetry 集成
+│   │   │   └── telemetry.py    # OpenTelemetry 集成（HTTP OTLP）
 │   │   ├── tests/
 │   │   │   ├── test_smoke.py   # 冒烟测试
 │   │   │   └── test_reservation.py  # 业务单元测试
-│   │   ├── Dockerfile          # 多阶段构建
+│   │   ├── Dockerfile          # 多阶段构建（非 root 运行）
 │   │   ├── requirements.txt    # 生产依赖
 │   │   └── requirements-dev.txt # 开发依赖
 │   ├── member/                 # 会员服务（Node.js 20 / Express）
 │   │   ├── src/
 │   │   │   ├── index.js        # Express 应用入口
 │   │   │   ├── routes/         # 路由模块
-│   │   │   └── telemetry.js    # OpenTelemetry 集成
-│   │   ├── Dockerfile          # 多阶段构建
+│   │   │   └── telemetry.js    # OpenTelemetry 集成（HTTP OTLP）
+│   │   ├── Dockerfile          # 多阶段构建（npm 国内镜像加速）
 │   │   ├── package.json
 │   │   └── package-lock.json
-│   └── api-gateway/            # Nginx API 网关配置
-│       └── nginx.conf
-├── docs/
-│   ├── runbook.md              # 运维手册
-│   └── rollback.md             # 回滚操作手册
-├── scripts/
-│   ├── seed.py                 # 测试数据种子脚本
-│   └── health-check.sh         # 健康检查脚本
-├── docker-compose.yml          # 本地一键起栈
+│   ├── prometheus/             # Prometheus 配置
+│   │   └── prometheus.yml       # scrape targets 配置
+│   ├── grafana/                # Grafana 配置
+│   │   └── provisioning/
+│   │       ├── datasources/     # 自动配置数据源
+│   │       └── dashboards/      # NekoCafé 专属仪表盘
+│   ├── otelcol/                 # OpenTelemetry Collector 配置
+│   │   └── config.yaml          # 接收/转发 OTLP → Prometheus/Loki/Tempo
+│   └── tempo/                   # Tempo 链路追踪配置
+│       └── tempo.yaml           # Jaeger/OTLP 接收，local 存储
+├── docker-compose.yml           # 本地一键起栈（含可观测性全家桶）
 ├── docker-compose.override.yml # 本地开发覆盖配置
 ├── .editorconfig               # 编辑器配置
 ├── .pre-commit-config.yaml     # pre-commit 钩子
@@ -144,14 +146,65 @@ git push → Lint & Format → Unit Test（覆盖率≥80%）→ Trivy 安全扫
 
 ## 可观测性
 
-| 组件 | 用途 | 端口 |
-|------|------|------|
-| Prometheus | 指标采集 | 9090 |
-| Grafana | 可视化 Dashboard | 3000 |
-| Loki | 日志聚合 | 3100 |
-| Tempo | 链路追踪 | 4317 |
+本项目集成了完整的可观测性技术栈（Metrics + Logs + Traces），基于 **OpenTelemetry** 标准。
 
-访问 Grafana：http://localhost:3000（默认账号 admin/admin）
+### 架构概览
+
+```
+┌──────────────┐    OTLP/HTTP     ┌─────────────────┐
+│  reservation │ ───(4318)────────▶                 │
+│   (Python)   │                  │  OpenTelemetry  │
+└──────────────┘    OTLP/HTTP     │    Collector    │
+┌──────────────┐ ───(4318)────────▶                 │──▶ Prometheus (9090)
+│    member    │                  │  (otelcol)      │──▶ Loki (3100)
+│  (Node.js)  │                  └─────────────────┘──▶ Tempo (4317/3200)
+└──────────────┘
+```
+
+### 组件说明
+
+| 组件 | 用途 | 端口 | 访问地址 |
+|------|------|------|----------|
+| Prometheus | 指标采集（CPU/内存/请求率/延迟） | 9090 | http://localhost:9090 |
+| Grafana | 可视化 Dashboard | 3000 | http://localhost:3000 （admin/admin） |
+| Loki | 日志聚合（服务日志） | 3100 | 集成于 Grafana |
+| Tempo | 分布式链路追踪 | 3200 (HTTP) / 4317 (gRPC) | 集成于 Grafana |
+| OTEL Collector | 统一收集转发 | 4317 (gRPC) / 4318 (HTTP) | 自动接收并路由 |
+
+### Grafana 仪表盘
+
+一键启动后，Grafana 会自动加载 **NekoCafé 服务监控** 仪表盘，包含以下面板：
+
+- 服务健康状态（在线/离线）
+- 请求速率（req/s）
+- 响应延迟（P50 / P95 / P99）
+- 5xx 错误率
+- 内存使用量
+- 服务日志（Loki 面板）
+
+访问路径：`Grafana → Dashboards → NekoCafé 服务监控`
+
+### 查看日志
+
+在 Grafana 中切换到 **Explore** 页面：
+1. 选择 **Loki** 数据源
+2. 输入 `{"service_name": "reservation"}` 或 `{"service_name": "member"}` 过滤日志
+3. 点击 **Run query** 查看实时日志流
+
+### 查看链路追踪
+
+在 Grafana 中切换到 **Explore** 页面：
+1. 选择 **Tempo** 数据源
+2. 输入 Trace ID 或按服务名过滤
+3. 点击 **Run query** 查看完整调用链
+
+### Prometheus 指标端点
+
+| 服务 | 指标路径 |
+|------|----------|
+| reservation | http://localhost:8081/metrics |
+| member | http://localhost:8082/metrics |
+| otelcol | http://localhost:8889/metrics |
 
 ---
 
