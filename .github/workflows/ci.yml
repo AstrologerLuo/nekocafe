@@ -297,17 +297,22 @@ jobs:
         run: |
           echo "=== reservation 冒烟 ==="
           curl -sf http://localhost:8081/healthz | tee /dev/stderr
+          echo ""
           curl -sf http://localhost:8081/readyz | tee /dev/stderr
+          echo ""
           curl -sf -o /dev/null -w "docs: %{http_code}" http://localhost:8081/docs
           echo ""
 
           echo "=== member 冒烟 ==="
           curl -sf http://localhost:8082/healthz | tee /dev/stderr
-          curl -sf -o /dev/null -w "docs: %{http_code}" http://localhost:8082/docs
+          echo ""
+          # member 是 Node.js 服务，无 /docs 端点
+          curl -s -o /dev/null -w "healthz: %{http_code}" http://localhost:8082/healthz
           echo ""
 
           echo "=== API Gateway ==="
-          curl -sf -o /dev/null -w "gateway: %{http_code}" http://localhost:8080/
+          curl -s -o /dev/null -w "gateway: %{http_code}" http://localhost:8080/
+          echo ""
           echo ""
 
       - name: Cleanup
