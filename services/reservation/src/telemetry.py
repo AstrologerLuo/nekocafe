@@ -23,7 +23,7 @@ def setup_telemetry() -> None:
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -37,7 +37,8 @@ def setup_telemetry() -> None:
 
         # Tracer Provider
         tracer_provider = TracerProvider(resource=resource)
-        otlp_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+        # HTTP exporter（OTel Collector 4318 端口接受 HTTP）
+        otlp_exporter = OTLPSpanExporter(endpoint=endpoint.rstrip("/") + "/v1/traces")
         tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
         trace.set_tracer_provider(tracer_provider)
 

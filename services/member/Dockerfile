@@ -12,8 +12,8 @@ WORKDIR /app
 # 仅复制 package 文件，利用 Layer Cache
 COPY package*.json ./
 
-# ci 安装（严格按 lockfile），仅生产依赖
-RUN npm ci --only=production && npm cache clean --force
+# 安装生产依赖（无 lockfile 时使用 install），使用国内镜像加速
+RUN npm install --omit=dev --registry https://registry.npmmirror.com && npm cache clean --force
 
 # ---- 阶段2：最终运行镜像 ----
 FROM node:20-alpine AS runtime

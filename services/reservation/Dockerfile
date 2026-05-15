@@ -12,9 +12,9 @@ WORKDIR /app
 # 仅复制依赖文件，利用 Docker Layer Cache
 COPY requirements.txt .
 
-# --no-cache-dir 减小体积；pip wheel 提前编译
+# 安装依赖（使用官方 PyPI，无需编译工具，已有预编译 wheel）
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir --index-url https://pypi.org/simple/ -r requirements.txt
 
 COPY . .
 
@@ -38,7 +38,7 @@ USER app
 # 声明端口
 EXPOSE 8080
 
-# 健康检查（镜像内自带）
+# 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')" || exit 1
 

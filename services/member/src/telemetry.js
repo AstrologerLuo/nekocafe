@@ -22,7 +22,7 @@ function setupTelemetry() {
 
   try {
     const { NodeSDK } = require('@opentelemetry/sdk-node');
-    const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+    const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
     const { Resource } = require('@opentelemetry/resources');
     const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
     const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
