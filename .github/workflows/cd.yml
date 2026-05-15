@@ -3,7 +3,6 @@ name: CD
 on:
   push:
     branches: [main]        # 自动部署到 dev
-  push:
     tags:
       - 'v*.*.*'            # 手动审批后部署到 staging/prod
 
