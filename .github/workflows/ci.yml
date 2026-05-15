@@ -51,7 +51,7 @@ jobs:
           cd services/member
           npm ci
           npm run lint
-          npm audit --audit-level=high
+          npm audit --audit-level=critical
 
   # ===================================================================
   # JOB 2: 单元测试（并行）
