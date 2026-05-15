@@ -184,12 +184,12 @@ jobs:
           SIZE=$(docker image inspect ${{ steps.first-tag.outputs.tag }} --format='{{.Size}}' | awk '{printf "%.1f MB", $1/1024/1024}')
           echo "size=$SIZE" >> $GITHUB_OUTPUT
 
-      - name: Push image（仅在 main 分支）
+      - name: Push image（需配置 GHCR 权限后改为 push: true）
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
