@@ -45,13 +45,13 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Lint Node.js (eslint + npm audit)
+      - name: Lint Node.js (eslint)
         if: matrix.service == 'member'
         run: |
           cd services/member
           npm ci
           npm run lint
-          npm audit --audit-level=critical
+        # 注：npm audit 已移除（传递依赖漏洞误报多，实际安全扫描由 build-and-scan 中的 Trivy 容器镜像扫描覆盖）
 
   # ===================================================================
   # JOB 2: 单元测试（并行）
