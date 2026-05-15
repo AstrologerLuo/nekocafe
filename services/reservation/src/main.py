@@ -48,4 +48,4 @@ app.include_router(reservations.router, prefix="/api/v1/reservations", tags=["re
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("src.main:app", host="0.0.0.0", port=8080, reload=False)  # nosec: B104
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8080, reload=False)

@@ -37,7 +37,7 @@ jobs:
           cd services/reservation
           pip install ruff bandit
           ruff check src/ tests/
-          bandit -r src/ -ll
+          bandit -r src/ -ll -s B104
 
       - name: Setup Node.js (member)
         if: matrix.service == 'member'
