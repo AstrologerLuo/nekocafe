@@ -109,6 +109,9 @@ jobs:
     name: Build & Scan
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      contents: read
+      security-events: write
     strategy:
       matrix:
         include:
@@ -153,17 +156,21 @@ jobs:
           cache-to: type=gha,mode=max
           load: true
 
+      - name: Get first image tag (Trivy 只需单个引用)
+        id: first-tag
+        run: echo "tag=$(echo '${{ steps.meta.outputs.tags }}' | head -n1)" >> $GITHUB_OUTPUT
+
       - name: Run Trivy 安全扫描
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ steps.meta.outputs.tags }}
+          image-ref: ${{ steps.first-tag.outputs.tag }}
           format: "sarif"
           output: "trivy-results-${{ matrix.service }}.sarif"
           severity: "HIGH,CRITICAL"
           exit-code: "1"  # HIGH/CRITICAL 漏洞时失败
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: "trivy-results-${{ matrix.service }}.sarif"
