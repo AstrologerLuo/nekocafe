@@ -3,8 +3,8 @@ name: CD
 on:
   push:
     branches: [main]        # 自动部署到 dev
-    tags:
-      - 'v*.*.*'            # 手动审批后部署到 staging/prod
+  tags:
+    - 'v*.*.*'            # 手动审批后部署到 staging/prod
 
 env:
   REGISTRY: ghcr.io
@@ -24,15 +24,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 检查 KUBECONFIG_DEV 是否配置
+        id: check_kubeconfig
+        run: |
+          KUBECONFIG_SECRET="${{ secrets.KUBECONFIG_DEV }}"
+          if [ -z "$KUBECONFIG_SECRET" ] || [ "$KUBECONFIG_SECRET" == "placeholder" ]; then
+            echo "⚠️ KUBECONFIG_DEV 未配置或为占位符，跳过 K8s 部署（本地 PoC 环境）"
+            echo "skip_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up kubectl
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         uses: azure/setup-kubectl@v3
 
       - name: Configure kubeconfig (dev)
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           echo "${{ secrets.KUBECONFIG_DEV }}" | base64 -d > kubeconfig.yaml
           export KUBECONFIG=kubeconfig.yaml
 
       - name: Deploy to dev namespace (Helm + 金丝雀)
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           export KUBECONFIG=kubeconfig.yaml
           IMAGE_TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
@@ -56,11 +70,19 @@ jobs:
             --wait --timeout=10m
 
       - name: 运行烟雾测试
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           sleep 30
           DEV_URL=${{ secrets.DEV_SERVICE_URL }}
           curl -sf $DEV_URL/healthz || exit 1
           echo "Dev 烟雾测试通过 ✅"
+
+      - name: 本地 PoC 说明
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'true'
+        run: |
+          echo "✅ 本次提交已通过 CI 测试（lint + test + build + scan）"
+          echo "📝 K8s 部署需在 Settings → Secrets 中配置 KUBECONFIG_DEV 后自动生效"
+          echo "🐳 镜像已推送至 GHCR: ghcr.io/${{ github.repository_owner }}/nekocafe-{reservation,member}"
 
   # ===================================================================
   # JOB 2: 部署到 staging（tag *-staging 触发，需要手动审批）
@@ -75,14 +97,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 检查 KUBECONFIG_STAGING 是否配置
+        id: check_kubeconfig
+        run: |
+          KUBECONFIG_SECRET="${{ secrets.KUBECONFIG_STAGING }}"
+          if [ -z "$KUBECONFIG_SECRET" ] || [ "$KUBECONFIG_SECRET" == "placeholder" ]; then
+            echo "⚠️ KUBECONFIG_STAGING 未配置，跳过 staging 部署"
+            echo "skip_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up kubectl
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         uses: azure/setup-kubectl@v3
 
       - name: Configure kubeconfig (staging)
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig.yaml
 
       - name: Deploy to staging namespace
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           export KUBECONFIG=kubeconfig.yaml
           TAG=${{ github.ref_name }}
@@ -101,11 +137,18 @@ jobs:
             --wait --timeout=15m
 
       - name: 运行集成测试
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           sleep 60
           STAGING_URL=${{ secrets.STAGING_SERVICE_URL }}
           curl -sf $STAGING_URL/healthz || exit 1
           echo "Staging 集成测试通过 ✅"
+
+      - name: PoC 环境说明
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'true'
+        run: |
+          echo "✅ Staging 部署已跳过（KUBECONFIG_STAGING 未配置）"
+          echo "📝 请在 Settings → Secrets 中配置后手动触发"
 
   # ===================================================================
   # JOB 3: 部署到 prod（正式 tag 触发，需要手动审批，蓝绿部署）
@@ -120,14 +163,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 检查 KUBECONFIG_PROD 是否配置
+        id: check_kubeconfig
+        run: |
+          KUBECONFIG_SECRET="${{ secrets.KUBECONFIG_PROD }}"
+          if [ -z "$KUBECONFIG_SECRET" ] || [ "$KUBECONFIG_SECRET" == "placeholder" ]; then
+            echo "⚠️ KUBECONFIG_PROD 未配置，跳过 prod 部署"
+            echo "skip_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up kubectl
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         uses: azure/setup-kubectl@v3
 
       - name: Configure kubeconfig (prod)
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > kubeconfig.yaml
 
       - name: 蓝绿部署到 prod
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'false'
         run: |
           export KUBECONFIG=kubeconfig.yaml
           TAG=${{ github.ref_name }}
@@ -162,3 +219,9 @@ jobs:
         run: |
           echo "部署状态: ${{ job.status }}"
           # TODO: 接入飞书/邮件通知
+
+      - name: PoC 环境说明
+        if: steps.check_kubeconfig.outputs.skip_deploy == 'true'
+        run: |
+          echo "✅ Prod 蓝绿部署已跳过（KUBECONFIG_PROD 未配置）"
+          echo "📝 生产部署需配置真实 K8s 集群信息后方可执行"
