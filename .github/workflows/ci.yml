@@ -181,7 +181,7 @@ jobs:
       - name: Get image size
         id: image-size
         run: |
-          SIZE=$(docker image inspect ${{ steps.meta.outputs.tags }} --format='{{.Size}}' | awk '{printf "%.1f MB", $1/1024/1024}')
+          SIZE=$(docker image inspect ${{ steps.first-tag.outputs.tag }} --format='{{.Size}}' | awk '{printf "%.1f MB", $1/1024/1024}')
           echo "size=$SIZE" >> $GITHUB_OUTPUT
 
       - name: Push image（仅在 main 分支）
