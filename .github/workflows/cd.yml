@@ -9,6 +9,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_ORG: ${{ github.repository_owner }}
+  # 强制 GitHub Actions JavaScript actions 使用 Node.js 24（Node.js 20 将于 2026-09-16 停用）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ===================================================================
