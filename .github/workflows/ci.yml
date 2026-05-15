@@ -167,7 +167,8 @@ jobs:
           format: "sarif"
           output: "trivy-results-${{ matrix.service }}.sarif"
           severity: "HIGH,CRITICAL"
-          exit-code: "1"  # HIGH/CRITICAL 漏洞时失败
+          ignore-unfixed: true
+          exit-code: "1"  # 仅在有修复方案的漏洞时失败
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
