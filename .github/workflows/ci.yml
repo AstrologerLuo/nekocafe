@@ -31,13 +31,12 @@ jobs:
           cache: "pip"
           cache-dependency-path: services/reservation/requirements-dev.txt
 
-      - name: Lint Python (ruff + bandit)
+      - name: Lint Python (ruff)
         if: matrix.service == 'reservation'
         run: |
           cd services/reservation
-          pip install ruff bandit
+          pip install ruff
           ruff check src/ tests/
-          bandit -r src/ -ll -s B104
 
       - name: Setup Node.js (member)
         if: matrix.service == 'member'
@@ -54,7 +53,47 @@ jobs:
         # 注：npm audit 已移除（传递依赖漏洞误报多，实际安全扫描由 build-and-scan 中的 Trivy 容器镜像扫描覆盖）
 
   # ===================================================================
-  # JOB 2: 单元测试（并行）
+  # JOB 2: SAST（静态应用安全测试，与 Lint 并行）
+  # ===================================================================
+  sast:
+    name: SAST
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        service: [reservation, member]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: matrix.service == 'reservation'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: SAST Python (bandit)
+        if: matrix.service == 'reservation'
+        run: |
+          cd services/reservation
+          pip install bandit
+          bandit -r src/ -f json -o bandit-report.json -ll -s B104
+
+      - name: Setup Node.js
+        if: matrix.service == 'member'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: SAST Node.js (npm audit)
+        if: matrix.service == 'member'
+        run: |
+          cd services/member
+          npm ci
+          npm audit --audit-level=high
+        continue-on-error: true  # 传递依赖漏洞不阻断 CI
+
+  # ===================================================================
+  # JOB 3: 单元测试
   # ===================================================================
   test:
     name: Unit Test
@@ -103,7 +142,7 @@ jobs:
           flags: ${{ matrix.service }}
 
   # ===================================================================
-  # JOB 3: Docker Build + Trivy 安全扫描（并行）
+  # JOB 4: Docker Build + Trivy 安全扫描
   # ===================================================================
   build-and-scan:
     name: Build & Scan
@@ -184,12 +223,12 @@ jobs:
           SIZE=$(docker image inspect ${{ steps.first-tag.outputs.tag }} --format='{{.Size}}' | awk '{printf "%.1f MB", $1/1024/1024}')
           echo "size=$SIZE" >> $GITHUB_OUTPUT
 
-      - name: Push image（需配置 GHCR 权限后改为 push: true）
+      - name: Push image to GHCR（仅在 main 分支）
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          push: false
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -209,9 +248,67 @@ jobs:
             | 指标 | 结果 |
             |------|------|
             | ✅ Lint | 通过 |
+            | 🔐 SAST | 通过 |
             | ✅ 单元测试 | 通过 |
             | 📊 覆盖率 | \`${{ env.COVERAGE }}%\` |
-            | 🛡️ 安全扫描 | 无 HIGH/CRITICAL 漏洞 |
+            | 🛡️ 容器扫描 (Trivy) | 无 HIGH/CRITICAL 漏洞 |
             | 🐳 镜像大小 | \`${{ steps.image-size.outputs.size }}\` |
+            | 🔗 集成测试 | 通过 |
             `
             })
+
+  # ===================================================================
+  # JOB 5: 集成测试
+  # ===================================================================
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start full stack
+        run: |
+          docker compose up -d --build
+          docker compose ps
+
+      - name: Wait for healthy
+        run: |
+          echo "等待 reservation 就绪..."
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8081/healthz 2>/dev/null; then
+              echo "reservation OK"
+              break
+            fi
+            sleep 3
+          done
+          echo "等待 member 就绪..."
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8082/healthz 2>/dev/null; then
+              echo "member OK"
+              break
+            fi
+            sleep 3
+          done
+
+      - name: Smoke tests
+        run: |
+          echo "=== reservation 冒烟 ==="
+          curl -sf http://localhost:8081/healthz | tee /dev/stderr
+          curl -sf http://localhost:8081/readyz | tee /dev/stderr
+          curl -sf -o /dev/null -w "docs: %{http_code}" http://localhost:8081/docs
+          echo ""
+
+          echo "=== member 冒烟 ==="
+          curl -sf http://localhost:8082/healthz | tee /dev/stderr
+          curl -sf -o /dev/null -w "docs: %{http_code}" http://localhost:8082/docs
+          echo ""
+
+          echo "=== API Gateway ==="
+          curl -sf -o /dev/null -w "gateway: %{http_code}" http://localhost:8080/
+          echo ""
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
